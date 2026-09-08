@@ -1,4 +1,3 @@
-
 import os
 from google import genai
 
@@ -11,9 +10,9 @@ client = genai.Client(api_key=api_key)
 
 response = client.models.generate_content(
     model="gemini-3.7-flash",
-    contents="Give me one short original YouTube video idea for a USA audience."
+    contents="Create one original 30-second YouTube Shorts story idea for a USA audience. Give only the idea."
 )
 
 print("Vexora Tales AI is running!")
-print("AI Video Idea:")
+print("AI Story Idea:")
 print(response.text)
