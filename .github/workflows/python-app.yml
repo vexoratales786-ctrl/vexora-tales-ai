@@ -3,7 +3,11 @@ name: Vexora Tales AI
 on:
   push:
     branches: ["main"]
+
   workflow_dispatch:
+
+  schedule:
+    - cron: "30 4 * * *"
 
 permissions:
   contents: read
