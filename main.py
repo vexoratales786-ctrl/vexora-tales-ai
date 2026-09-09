@@ -16,7 +16,7 @@ CHANNEL_NAME = "Vexora Tales"
 TARGET_AUDIENCE = "USA"
 TIMEZONE = "Asia/Kolkata"
 
-TEXT_MODEL = gemini-3.7-flash
+TEXT_MODEL = "gemini-3.7-flash"
 TTS_MODEL = "gemini-3.1-flash-tts-preview"
 
 api_key = os.environ.get("GEMINI_API_KEY")
