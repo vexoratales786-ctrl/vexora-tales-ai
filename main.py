@@ -1,5 +1,6 @@
 import os
 import base64
+import time
 import wave
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,10 +8,16 @@ from zoneinfo import ZoneInfo
 from google import genai
 
 
-# ==============================
+# ==========================================
 # VEXORA TALES AI
-# Script + AI Voice Generator
-# ==============================
+# ==========================================
+
+CHANNEL_NAME = "Vexora Tales"
+TARGET_AUDIENCE = "USA"
+TIMEZONE = "Asia/Kolkata"
+
+TEXT_MODEL = "gemini-3.8-flash"
+TTS_MODEL = "gemini-3.1-flash-tts-preview"
 
 api_key = os.environ.get("GEMINI_API_KEY")
 
@@ -19,15 +26,47 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# India time ke hisaab se day decide hoga
-today = datetime.now(ZoneInfo("Asia/Kolkata"))
+
+# ==========================================
+# RETRY SYSTEM
+# ==========================================
+
+def retry_call(function, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return function()
+
+        except Exception as error:
+            last_error = error
+
+            print(
+                f"Gemini request failed "
+                f"(attempt {attempt}/{max_attempts})"
+            )
+
+            if attempt < max_attempts:
+                wait_time = 2 ** attempt
+                print(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+
+    raise last_error
+
+
+# ==========================================
+# DATE / DAY
+# ==========================================
+
+today = datetime.now(ZoneInfo(TIMEZONE))
+
 day_name = today.strftime("%A")
 date_name = today.strftime("%Y-%m-%d")
 
 
-# ==============================
+# ==========================================
 # CONTENT TYPE
-# ==============================
+# ==========================================
 
 if day_name == "Sunday":
 
@@ -36,31 +75,35 @@ if day_name == "Sunday":
     prompt = """
 You are the content creation AI for the YouTube channel "Vexora Tales".
 
-CHANNEL:
-- Audience: USA
-- Niche: Original viral stories + animated explainers
-- Format: Faceless YouTube video
-- Language: Natural American English
-- Length: Approximately 10 minutes
+Audience: USA
+Language: Natural American English
+Format: Faceless YouTube video
+Length: Approximately 10 minutes
+Niche: Original viral stories and animated explainers.
 
-IMPORTANT:
-- Create a completely ORIGINAL story.
-- Do not copy any existing YouTube video.
-- Do not use copyrighted movie characters or scenes.
-- Make the story highly engaging.
-- Strong hook in the first 10 seconds.
-- Maintain curiosity throughout.
-- Make every scene visually easy to animate.
-- End with a satisfying conclusion.
-- Add a natural YouTube call-to-action.
+Create a completely ORIGINAL story.
 
-OUTPUT FORMAT:
+Do not copy existing YouTube videos.
+Do not use copyrighted movie or TV characters.
+Do not use copyrighted clips.
+Do not make false claims.
+Do not create repetitive spam.
+
+The first 10 seconds must have a powerful hook.
+
+Maintain curiosity throughout the video.
+
+Every scene must be easy to animate.
+
+Create a satisfying ending.
+
+OUTPUT:
 
 TITLE:
-Write one clickable but honest title.
+One clickable but honest title.
 
 HOOK:
-Write the opening 10 seconds.
+Opening narration for approximately 10 seconds.
 
 SCENE 1:
 VISUAL:
@@ -71,6 +114,26 @@ VISUAL:
 VOICEOVER:
 
 SCENE 3:
+VISUAL:
+VOICEOVER:
+
+SCENE 4:
+VISUAL:
+VOICEOVER:
+
+SCENE 5:
+VISUAL:
+VOICEOVER:
+
+SCENE 6:
+VISUAL:
+VOICEOVER:
+
+SCENE 7:
+VISUAL:
+VOICEOVER:
+
+SCENE 8:
 VISUAL:
 VOICEOVER:
 
@@ -91,30 +154,35 @@ else:
     prompt = """
 You are the content creation AI for the YouTube channel "Vexora Tales".
 
-CHANNEL:
-- Audience: USA
-- Niche: Original viral stories + animated explainers
-- Format: Faceless YouTube Short
-- Length: Approximately 30 seconds
-- Language: Natural American English
+Audience: USA
+Language: Natural American English
+Format: Faceless YouTube Short
+Length: Approximately 30 seconds
+Niche: Original viral stories and animated explainers.
 
-IMPORTANT:
-- Create a completely ORIGINAL story.
-- Do not copy existing YouTube content.
-- Do not use copyrighted movie characters or scenes.
-- Make the first 2 seconds highly interesting.
-- Keep the story fast and easy to understand.
-- Create a strong twist or payoff.
-- Make visuals easy to animate.
-- Add a short natural CTA.
+Create a completely ORIGINAL story.
 
-OUTPUT FORMAT:
+Do not copy existing YouTube videos.
+Do not use copyrighted movie or TV characters.
+Do not use copyrighted clips.
+Do not make false claims.
+Do not create repetitive spam.
+
+The first 1–2 seconds must immediately create curiosity.
+
+Keep the story fast and easy to understand.
+
+Create a strong twist, reveal or payoff.
+
+Every scene must be easy to animate.
+
+OUTPUT:
 
 TITLE:
-Write one clickable but honest title.
+One clickable but honest title.
 
 HOOK:
-Write the opening hook.
+Opening hook.
 
 SCENE 1:
 VISUAL:
@@ -141,13 +209,24 @@ VOICEOVER:
 """
 
 
-# ==============================
+# ==========================================
 # GENERATE STORY
-# ==============================
+# ==========================================
 
-response = client.models.generate_content(
-    model="gemini-3.7-flash",
-    contents=prompt
+print("=" * 50)
+print("VEXORA TALES AI")
+print("=" * 50)
+print(f"Date: {date_name}")
+print(f"Day: {day_name}")
+print(f"Content Type: {content_type}")
+print("")
+print("Generating story...")
+
+response = retry_call(
+    lambda: client.models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt
+    )
 )
 
 story = response.text.strip()
@@ -155,63 +234,78 @@ story = response.text.strip()
 if not story:
     raise RuntimeError("Gemini ne story generate nahi ki.")
 
+print("STORY GENERATED: YES")
 
-# ==============================
+
+# ==========================================
 # SAVE STORY
-# ==============================
+# ==========================================
 
 with open("story.txt", "w", encoding="utf-8") as file:
     file.write(story)
 
 
-# ==============================
-# EXTRACT VOICEOVER
-# ==============================
+# ==========================================
+# EXTRACT NARRATION
+# ==========================================
+
+print("Preparing narration...")
 
 voice_prompt = f"""
-You are preparing narration for a professional YouTube video.
+You are preparing narration for a professional American YouTube video.
 
-Read the following script and extract ONLY the spoken narration.
+Read the script below.
 
-Rules:
-- Include the hook narration.
-- Include every scene voiceover.
-- Include ending narration.
-- Include the call to action narration.
-- Remove VISUAL descriptions.
-- Do not add speaker names.
-- Do not add headings.
-- Do not add quotation marks.
-- Keep the exact story meaning.
-- Natural American English.
-- Make it sound like a professional storyteller.
+Extract ONLY the words that should be spoken by the narrator.
+
+Include:
+- Hook narration
+- Every scene voiceover
+- Ending narration
+- Call to action narration
+
+Remove:
+- VISUAL descriptions
+- Scene headings
+- Labels
+- Instructions
+- Metadata
+
+Do not add new story information.
+
+Use natural American English.
 
 SCRIPT:
 
 {story}
 """
 
-voice_response = client.models.generate_content(
-    model="gemini-3.7-flash",
-    contents=voice_prompt
+voice_response = retry_call(
+    lambda: client.models.generate_content(
+        model=TEXT_MODEL,
+        contents=voice_prompt
+    )
 )
 
 narration = voice_response.text.strip()
 
 if not narration:
-    raise RuntimeError("Voiceover text generate nahi hua.")
-
+    raise RuntimeError("Narration generate nahi hua.")
 
 with open("narration.txt", "w", encoding="utf-8") as file:
     file.write(narration)
 
+print("NARRATION GENERATED: YES")
 
-# ==============================
+
+# ==========================================
 # GEMINI AI VOICE
-# ==============================
+# ==========================================
+
+print("Generating AI voice...")
 
 tts_prompt = f"""
-Perform this narration as a professional American YouTube storyteller.
+Read the following narration as a professional American YouTube storyteller.
 
 Voice style:
 - Male storyteller
@@ -221,34 +315,42 @@ Voice style:
 - Suspenseful
 - Confident
 - Medium-fast pacing
-- Emotional where appropriate
-- No introduction
-- No extra words
+- Natural emotion
+- Professional YouTube narration
+
+Do not add any words.
 
 NARRATION:
 
 {narration}
 """
 
-tts_response = client.interactions.create(
-    model="gemini-3.1-flash-tts-preview",
-    input=tts_prompt,
-    response_format={"type": "audio"},
-    generation_config={
-        "speech_config": [
-            {
-                "voice": "Kore"
-            }
-        ]
-    }
+tts_response = retry_call(
+    lambda: client.interactions.create(
+        model=TTS_MODEL,
+        input=tts_prompt,
+        response_format={"type": "audio"},
+        generation_config={
+            "speech_config": [
+                {
+                    "voice": "Kore"
+                }
+            ]
+        }
+    )
 )
 
 
-# ==============================
-# SAVE WAV AUDIO
-# ==============================
+# ==========================================
+# SAVE WAV
+# ==========================================
 
-audio_data = base64.b64decode(tts_response.output_audio.data)
+if not tts_response.output_audio:
+    raise RuntimeError("Gemini TTS ne audio return nahi kiya.")
+
+audio_data = base64.b64decode(
+    tts_response.output_audio.data
+)
 
 with wave.open("voice.wav", "wb") as wav_file:
     wav_file.setnchannels(1)
@@ -256,23 +358,12 @@ with wave.open("voice.wav", "wb") as wav_file:
     wav_file.setframerate(24000)
     wav_file.writeframes(audio_data)
 
-
-# ==============================
-# FINAL LOG
-# ==============================
-
-print("=" * 45)
-print("VEXORA TALES AI")
-print("=" * 45)
-
-print(f"Date: {date_name}")
-print(f"Day: {day_name}")
-print(f"Content Type: {content_type}")
-
-print("")
-print("STORY GENERATED: YES")
-print("NARRATION GENERATED: YES")
 print("AI VOICE GENERATED: YES")
+
+
+# ==========================================
+# FINAL STATUS
+# ==========================================
 
 print("")
 print("FILES CREATED:")
@@ -281,5 +372,5 @@ print("- narration.txt")
 print("- voice.wav")
 
 print("")
-print("VEXORA TALES AI VOICE PIPELINE COMPLETE!")
-print("=" * 45)
+print("PIPELINE STATUS: SUCCESS")
+print("=" * 50)6
