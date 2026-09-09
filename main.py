@@ -374,3 +374,26 @@ print("- voice.wav")
 print("")
 print("PIPELINE STATUS: SUCCESS")
 print("=" * 50)
+# ==============================
+# CREATE VIDEO
+# ==============================
+
+import subprocess
+
+print("Creating YouTube video...")
+
+subprocess.run([
+    "ffmpeg",
+    "-y",
+    "-f", "lavfi",
+    "-i", "color=c=black:s=1080x1920:r=30",
+    "-i", "voice.wav",
+    "-tune", "stillimage",
+    "-c:v", "libx264",
+    "-c:a", "aac",
+    "-pix_fmt", "yuv420p",
+    "-shortest",
+    "vexora_tales_video.mp4"
+], check=True)
+
+print("VIDEO GENERATED: YES")
