@@ -442,4 +442,6 @@ else:
 title = "Vexora Tales Original Story"
 
 description = (
-    "An original story created by
+    "An original story created by Vexora Tales AI."
+
+    )
