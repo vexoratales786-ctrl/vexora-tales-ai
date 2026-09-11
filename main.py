@@ -1,25 +1,27 @@
 import os
+import json
 import base64
 import time
 import wave
+import subprocess
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from google import genai
 
 
-# ==========================================
-# VEXORA TALES AI
-# ==========================================
+# ============================================================
+# VEXORA TALES AI - AUTONOMOUS YOUTUBE AGENT
+# ============================================================
 
 CHANNEL_NAME = "Vexora Tales"
 TARGET_AUDIENCE = "USA"
 TIMEZONE = "Asia/Kolkata"
 
-TEXT_MODEL = "gemini-3.7-flash"
-TTS_MODEL = "gemini-3.1-flash-tts-preview"
+TEXT_MODEL = os.getenv("TEXT_MODEL", "gemini-3.7-flash")
+TTS_MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview")
 
-api_key = os.environ.get("GEMINI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
     raise RuntimeError("GEMINI_API_KEY secret nahi mila.")
@@ -27,11 +29,11 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 
-# ==========================================
-# RETRY SYSTEM
-# ==========================================
+# ============================================================
+# RETRY / SELF-RECOVERY
+# ============================================================
 
-def retry_call(function, max_attempts=3):
+def retry_call(function, max_attempts=6):
     last_error = None
 
     for attempt in range(1, max_attempts + 1):
@@ -40,289 +42,231 @@ def retry_call(function, max_attempts=3):
 
         except Exception as error:
             last_error = error
-
             print(
-                f"Gemini request failed "
-                f"(attempt {attempt}/{max_attempts})"
+                f"AI request failed "
+                f"(attempt {attempt}/{max_attempts}): {error}"
             )
 
             if attempt < max_attempts:
-                wait_time = 2 ** attempt
-                print(f"Retrying in {wait_time} seconds...")
+                wait_time = min(60, 2 ** attempt)
+                print(f"Self-recovery: waiting {wait_time} seconds...")
                 time.sleep(wait_time)
 
     raise last_error
 
 
-# ==========================================
-# DATE / DAY
-# ==========================================
+# ============================================================
+# DATE / CONTENT TYPE
+# ============================================================
 
-today = datetime.now(ZoneInfo(TIMEZONE))
-
-day_name = today.strftime("%A")
-date_name = today.strftime("%Y-%m-%d")
-
-
-# ==========================================
-# CONTENT TYPE
-# ==========================================
+now = datetime.now(ZoneInfo(TIMEZONE))
+day_name = now.strftime("%A")
+date_name = now.strftime("%Y-%m-%d")
 
 if day_name == "Sunday":
-
     content_type = "10-Minute YouTube Long Video"
+else:
+    content_type = "30-Second YouTube Short"
 
-    prompt = """
-You are the content creation AI for the YouTube channel "Vexora Tales".
+print("========================================")
+print("VEXORA TALES AI AGENT")
+print("Date:", date_name)
+print("Day:", day_name)
+print("Content:", content_type)
+print("========================================")
+
+
+# ============================================================
+# TREND + TOPIC RESEARCH
+# ============================================================
+
+trend_prompt = f"""
+You are the strategy brain of a USA-focused faceless YouTube channel
+called "{CHANNEL_NAME}".
+
+Today: {date_name}
+Content type: {content_type}
+
+Choose a HIGH-POTENTIAL topic for an original video.
+
+Focus on:
+- USA audience
+- English language
+- Faceless format
+- Strong curiosity
+- Strong first 3-second hook
+- Shareability
+- Current-interest style topics
+- Stories, mysteries, science, history, technology,
+  strange events, discoveries and animated explainers
+- Avoid saturated generic AI spam
+- Never copy another creator's script
+- Never recommend copyrighted clips as the main content
+
+Return ONLY valid JSON:
+
+{{
+  "topic": "topic",
+  "angle": "unique angle",
+  "hook": "opening hook",
+  "title": "suggested title",
+  "reason": "why this topic has potential"
+}}
+"""
+
+trend_response = retry_call(
+    lambda: client.models.generate_content(
+        model=TEXT_MODEL,
+        contents=trend_prompt
+    )
+)
+
+raw_trend = trend_response.text.strip()
+
+try:
+    trend = json.loads(raw_trend)
+except Exception:
+    trend = {
+        "topic": "A strange unexplained event that sounds impossible",
+        "angle": "Tell the story through a surprising investigation",
+        "hook": "This sounds impossible, but the evidence tells a different story.",
+        "title": "The Strange Story Nobody Can Explain",
+        "reason": "Strong curiosity and mystery angle"
+    }
+
+print("Selected topic:", trend["topic"])
+
+
+# ============================================================
+# ORIGINAL SCRIPT
+# ============================================================
+
+if content_type == "30-Second YouTube Short":
+
+    script_prompt = f"""
+Create a completely ORIGINAL YouTube Short for "{CHANNEL_NAME}".
 
 Audience: USA
 Language: Natural American English
-Format: Faceless YouTube video
-Length: Approximately 10 minutes
-Niche: Original viral stories and animated explainers.
+Length: approximately 30 seconds
+Format: faceless
+Topic: {trend["topic"]}
+Angle: {trend["angle"]}
+Hook: {trend["hook"]}
 
-Create a completely ORIGINAL story.
-
-Do not copy existing YouTube videos.
-Do not use copyrighted movie or TV characters.
-Do not use copyrighted clips.
-Do not make false claims.
-Do not create repetitive spam.
-
-The first 10 seconds must have a powerful hook.
-
-Maintain curiosity throughout the video.
-
-Every scene must be easy to animate.
-
-Create a satisfying ending.
-
-OUTPUT:
-
-TITLE:
-One clickable but honest title.
-
-HOOK:
-Opening narration for approximately 10 seconds.
-
-SCENE 1:
-VISUAL:
-VOICEOVER:
-
-SCENE 2:
-VISUAL:
-VOICEOVER:
-
-SCENE 3:
-VISUAL:
-VOICEOVER:
-
-SCENE 4:
-VISUAL:
-VOICEOVER:
-
-SCENE 5:
-VISUAL:
-VOICEOVER:
-
-SCENE 6:
-VISUAL:
-VOICEOVER:
-
-SCENE 7:
-VISUAL:
-VOICEOVER:
-
-SCENE 8:
-VISUAL:
-VOICEOVER:
-
-Continue with enough scenes for approximately 10 minutes.
-
-ENDING:
-VISUAL:
-VOICEOVER:
-
-CALL TO ACTION:
-VOICEOVER:
+Rules:
+- Original writing only.
+- Do not copy existing videos.
+- No copyrighted movie/show dialogue.
+- No reused clips.
+- Very strong first 2-3 seconds.
+- Fast pacing.
+- Interesting ending.
+- Include narration only.
+- Do not include scene directions.
+- Do not include labels.
 """
 
 else:
 
-    content_type = "30-Second YouTube Short"
-
-    prompt = """
-You are the content creation AI for the YouTube channel "Vexora Tales".
+    script_prompt = f"""
+Create a completely ORIGINAL approximately 10-minute YouTube
+faceless documentary/story video for "{CHANNEL_NAME}".
 
 Audience: USA
 Language: Natural American English
-Format: Faceless YouTube Short
-Length: Approximately 30 seconds
-Niche: Original viral stories and animated explainers.
+Topic: {trend["topic"]}
+Angle: {trend["angle"]}
 
-Create a completely ORIGINAL story.
-
-Do not copy existing YouTube videos.
-Do not use copyrighted movie or TV characters.
-Do not use copyrighted clips.
-Do not make false claims.
-Do not create repetitive spam.
-
-The first 1–2 seconds must immediately create curiosity.
-
-Keep the story fast and easy to understand.
-
-Create a strong twist, reveal or payoff.
-
-Every scene must be easy to animate.
-
-OUTPUT:
-
-TITLE:
-One clickable but honest title.
-
-HOOK:
-Opening hook.
-
-SCENE 1:
-VISUAL:
-VOICEOVER:
-
-SCENE 2:
-VISUAL:
-VOICEOVER:
-
-SCENE 3:
-VISUAL:
-VOICEOVER:
-
-SCENE 4:
-VISUAL:
-VOICEOVER:
-
-ENDING:
-VISUAL:
-VOICEOVER:
-
-CALL TO ACTION:
-VOICEOVER:
+Rules:
+- Original writing only.
+- No copied scripts.
+- No copyrighted dialogue.
+- Strong opening hook.
+- Clear story structure.
+- Maintain curiosity throughout.
+- Include useful facts and explanations where appropriate.
+- Strong ending.
+- Write narration only.
+- Do not include scene directions.
+- Do not include labels.
 """
 
-
-# ==========================================
-# GENERATE STORY
-# ==========================================
-
-print("=" * 50)
-print("VEXORA TALES AI")
-print("=" * 50)
-print(f"Date: {date_name}")
-print(f"Day: {day_name}")
-print(f"Content Type: {content_type}")
-print("")
-print("Generating story...")
-
-response = retry_call(
+script_response = retry_call(
     lambda: client.models.generate_content(
         model=TEXT_MODEL,
-        contents=prompt
+        contents=script_prompt
     )
 )
 
-story = response.text.strip()
+script = script_response.text.strip()
 
-if not story:
-    raise RuntimeError("Gemini ne story generate nahi ki.")
-
-print("STORY GENERATED: YES")
-
-
-# ==========================================
-# SAVE STORY
-# ==========================================
+if not script:
+    raise RuntimeError("Script generate nahi hua.")
 
 with open("story.txt", "w", encoding="utf-8") as file:
-    file.write(story)
+    file.write(script)
+
+print("Original script generated.")
 
 
-# ==========================================
-# EXTRACT NARRATION
-# ==========================================
+# ============================================================
+# TITLE / DESCRIPTION
+# ============================================================
 
-print("Preparing narration...")
+metadata_prompt = f"""
+Create YouTube metadata for this ORIGINAL video.
 
-voice_prompt = f"""
-You are preparing narration for a professional American YouTube video.
+Channel: {CHANNEL_NAME}
+Audience: USA
 
-Read the script below.
+Script:
+{script}
 
-Extract ONLY the words that should be spoken by the narrator.
+Return ONLY valid JSON:
 
-Include:
-- Hook narration
-- Every scene voiceover
-- Ending narration
-- Call to action narration
-
-Remove:
-- VISUAL descriptions
-- Scene headings
-- Labels
-- Instructions
-- Metadata
-
-Do not add new story information.
-
-Use natural American English.
-
-SCRIPT:
-
-{story}
+{{
+  "title": "high CTR but honest title",
+  "description": "YouTube description",
+  "hashtags": ["#shorts", "#mystery", "#story"]
+}}
 """
 
-voice_response = retry_call(
+metadata_response = retry_call(
     lambda: client.models.generate_content(
         model=TEXT_MODEL,
-        contents=voice_prompt
+        contents=metadata_prompt
     )
 )
 
-narration = voice_response.text.strip()
+try:
+    metadata = json.loads(metadata_response.text.strip())
+except Exception:
+    metadata = {
+        "title": trend["title"],
+        "description": f"An original story from {CHANNEL_NAME}.",
+        "hashtags": ["#shorts", "#story"]
+    }
 
-if not narration:
-    raise RuntimeError("Narration generate nahi hua.")
-
-with open("narration.txt", "w", encoding="utf-8") as file:
-    file.write(narration)
-
-print("NARRATION GENERATED: YES")
+with open("metadata.json", "w", encoding="utf-8") as file:
+    json.dump(metadata, file, indent=2)
 
 
-# ==========================================
-# GEMINI AI VOICE
-# ==========================================
-
-print("Generating AI voice...")
+# ============================================================
+# AI NARRATION
+# ============================================================
 
 tts_prompt = f"""
-Read the following narration as a professional American YouTube storyteller.
+Read the following narration as a professional American YouTube
+storyteller.
 
-Voice style:
-- Male storyteller
-- Natural American English
-- Clear pronunciation
-- Cinematic
-- Suspenseful
-- Confident
-- Medium-fast pacing
-- Natural emotion
-- Professional YouTube narration
+Natural, engaging, clear voice.
+Good pacing.
+Build suspense where appropriate.
+Do not add words.
 
-Do not add any words.
-
-NARRATION:
-
-{narration}
+Narration:
+{script}
 """
 
 tts_response = retry_call(
@@ -332,25 +276,13 @@ tts_response = retry_call(
         response_format={"type": "audio"},
         generation_config={
             "speech_config": [
-                {
-                    "voice": "Kore"
-                }
+                {"voice": "Kore"}
             ]
         }
     )
 )
 
-
-# ==========================================
-# SAVE WAV
-# ==========================================
-
-if not tts_response.output_audio:
-    raise RuntimeError("Gemini TTS ne audio return nahi kiya.")
-
-audio_data = base64.b64decode(
-    tts_response.output_audio.data
-)
+audio_data = base64.b64decode(tts_response.output_audio.data)
 
 with wave.open("voice.wav", "wb") as wav_file:
     wav_file.setnchannels(1)
@@ -358,42 +290,99 @@ with wave.open("voice.wav", "wb") as wav_file:
     wav_file.setframerate(24000)
     wav_file.writeframes(audio_data)
 
-print("AI VOICE GENERATED: YES")
+print("AI voice generated.")
 
 
-# ==========================================
-# FINAL STATUS
-# ==========================================
+# ============================================================
+# VIDEO CREATION
+# ============================================================
 
-print("")
-print("FILES CREATED:")
-print("- story.txt")
-print("- narration.txt")
-print("- voice.wav")
+video_title = metadata["title"].replace("'", "")
 
-print("")
-print("PIPELINE STATUS: SUCCESS")
-print("=" * 50)
-# ==============================
-# CREATE VIDEO
-# ==============================
-
-import subprocess
-
-print("Creating YouTube video...")
-
-subprocess.run([
+ffmpeg_command = [
     "ffmpeg",
     "-y",
     "-f", "lavfi",
     "-i", "color=c=black:s=1080x1920:r=30",
     "-i", "voice.wav",
-    "-tune", "stillimage",
+    "-t", "30" if content_type.startswith("30") else "600",
+    "-vf",
+    (
+        "drawtext="
+        "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        f"text='{video_title[:80]}':"
+        "fontcolor=white:"
+        "fontsize=58:"
+        "x=(w-text_w)/2:"
+        "y=(h-text_h)/2:"
+        "box=1:"
+        "boxborderw=30:"
+        "boxcolor=black@0.75"
+    ),
     "-c:v", "libx264",
-    "-c:a", "aac",
+    "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
     "-shortest",
-    "vexora_tales_video.mp4"
-], check=True)
+    "vexora_video.mp4"
+]
 
-print("VIDEO GENERATED: YES")
+try:
+    subprocess.run(
+        ffmpeg_command,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+except Exception as error:
+    raise RuntimeError(f"Video creation failed: {error}")
+
+print("Video created.")
+
+
+# ============================================================
+# THUMBNAIL
+# ============================================================
+
+thumbnail_command = [
+    "ffmpeg",
+    "-y",
+    "-i", "vexora_video.mp4",
+    "-frames:v", "1",
+    "-vf", "scale=1280:720",
+    "thumbnail.jpg"
+]
+
+subprocess.run(
+    thumbnail_command,
+    check=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE
+)
+
+print("Thumbnail created.")
+
+
+# ============================================================
+# SAVE FINAL STATUS
+# ============================================================
+
+status = {
+    "channel": CHANNEL_NAME,
+    "date": date_name,
+    "content_type": content_type,
+    "topic": trend["topic"],
+    "title": metadata["title"],
+    "video": "vexora_video.mp4",
+    "thumbnail": "thumbnail.jpg",
+    "status": "VIDEO_READY",
+    "upload": "PENDING_YOUTUBE_CONNECTION"
+}
+
+with open("agent_status.json", "w", encoding="utf-8") as file:
+    json.dump(status, file, indent=2)
+
+print("========================================")
+print("PIPELINE STATUS: SUCCESS")
+print("Video + voice + thumbnail ready.")
+print("========================================")
