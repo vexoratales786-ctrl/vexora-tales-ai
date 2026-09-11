@@ -1,5 +1,4 @@
 import os
-import json
 import base64
 import time
 import wave
@@ -8,6 +7,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from google import genai
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 
 # ============================================================
@@ -21,16 +23,20 @@ TIMEZONE = "Asia/Kolkata"
 TEXT_MODEL = os.getenv("TEXT_MODEL", "gemini-3.7-flash")
 TTS_MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview")
 
-api_key = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID")
+YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN")
+YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET")
 
-if not api_key:
+
+if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY secret nahi mila.")
 
-client = genai.Client(api_key=api_key)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 # ============================================================
-# RETRY / SELF-RECOVERY
+# SELF RECOVERY
 # ============================================================
 
 def retry_call(function, max_attempts=6):
@@ -42,6 +48,7 @@ def retry_call(function, max_attempts=6):
 
         except Exception as error:
             last_error = error
+
             print(
                 f"AI request failed "
                 f"(attempt {attempt}/{max_attempts}): {error}"
@@ -60,6 +67,7 @@ def retry_call(function, max_attempts=6):
 # ============================================================
 
 now = datetime.now(ZoneInfo(TIMEZONE))
+
 day_name = now.strftime("%A")
 date_name = now.strftime("%Y-%m-%d")
 
@@ -68,50 +76,60 @@ if day_name == "Sunday":
 else:
     content_type = "30-Second YouTube Short"
 
-print("========================================")
-print("VEXORA TALES AI AGENT")
+
+print("=" * 60)
+print("VEXORA TALES AI AUTONOMOUS AGENT")
 print("Date:", date_name)
 print("Day:", day_name)
 print("Content:", content_type)
-print("========================================")
+print("=" * 60)
 
 
 # ============================================================
-# TREND + TOPIC RESEARCH
+# TREND-AWARE TOPIC SELECTION
 # ============================================================
 
 trend_prompt = f"""
-You are the strategy brain of a USA-focused faceless YouTube channel
-called "{CHANNEL_NAME}".
+You are the content strategist for a USA-focused faceless YouTube channel.
 
-Today: {date_name}
-Content type: {content_type}
+Channel:
+{CHANNEL_NAME}
 
-Choose a HIGH-POTENTIAL topic for an original video.
+Target audience:
+American English-speaking viewers.
 
-Focus on:
-- USA audience
-- English language
-- Faceless format
-- Strong curiosity
-- Strong first 3-second hook
-- Shareability
-- Current-interest style topics
-- Stories, mysteries, science, history, technology,
-  strange events, discoveries and animated explainers
-- Avoid saturated generic AI spam
-- Never copy another creator's script
-- Never recommend copyrighted clips as the main content
+Today's date:
+{date_name}
 
-Return ONLY valid JSON:
+Content type:
+{content_type}
 
-{{
-  "topic": "topic",
-  "angle": "unique angle",
-  "hook": "opening hook",
-  "title": "suggested title",
-  "reason": "why this topic has potential"
-}}
+Choose ONE high-potential ORIGINAL topic.
+
+The topic should:
+- have strong curiosity
+- work for a faceless channel
+- be understandable to a USA audience
+- have viral potential
+- NOT copy another creator's script
+- NOT reuse copyrighted video
+- be suitable for original AI-generated storytelling
+- have a strong hook
+- have potential for high retention
+
+Preferred areas:
+mystery, history, strange real events, science, technology,
+space, human behavior, unexplained events, shocking facts,
+interesting American stories.
+
+Do NOT claim that the topic is guaranteed viral.
+
+Return ONLY this format:
+
+TOPIC: ...
+ANGLE: ...
+HOOK: ...
+REASON: ...
 """
 
 trend_response = retry_call(
@@ -121,20 +139,10 @@ trend_response = retry_call(
     )
 )
 
-raw_trend = trend_response.text.strip()
+trend_text = trend_response.text.strip()
 
-try:
-    trend = json.loads(raw_trend)
-except Exception:
-    trend = {
-        "topic": "A strange unexplained event that sounds impossible",
-        "angle": "Tell the story through a surprising investigation",
-        "hook": "This sounds impossible, but the evidence tells a different story.",
-        "title": "The Strange Story Nobody Can Explain",
-        "reason": "Strong curiosity and mystery angle"
-    }
-
-print("Selected topic:", trend["topic"])
+print("\nSELECTED TREND:")
+print(trend_text)
 
 
 # ============================================================
@@ -144,53 +152,56 @@ print("Selected topic:", trend["topic"])
 if content_type == "30-Second YouTube Short":
 
     script_prompt = f"""
-Create a completely ORIGINAL YouTube Short for "{CHANNEL_NAME}".
+Create an ORIGINAL 30-second YouTube Short for {CHANNEL_NAME}.
 
-Audience: USA
-Language: Natural American English
-Length: approximately 30 seconds
-Format: faceless
-Topic: {trend["topic"]}
-Angle: {trend["angle"]}
-Hook: {trend["hook"]}
+USA audience.
+American English.
 
-Rules:
-- Original writing only.
-- Do not copy existing videos.
-- No copyrighted movie/show dialogue.
-- No reused clips.
-- Very strong first 2-3 seconds.
-- Fast pacing.
-- Interesting ending.
-- Include narration only.
-- Do not include scene directions.
-- Do not include labels.
+Selected topic:
+{trend_text}
+
+Requirements:
+- extremely strong first 2 seconds
+- fast pacing
+- curiosity gap
+- simple storytelling
+- original wording
+- no copied script
+- no copyrighted clips
+- ending should encourage viewers to watch again
+- approximately 65-85 spoken words
+
+Return ONLY the narrator script.
 """
 
 else:
 
     script_prompt = f"""
-Create a completely ORIGINAL approximately 10-minute YouTube
-faceless documentary/story video for "{CHANNEL_NAME}".
+Create an ORIGINAL approximately 10-minute YouTube video
+for {CHANNEL_NAME}.
 
-Audience: USA
-Language: Natural American English
-Topic: {trend["topic"]}
-Angle: {trend["angle"]}
+USA audience.
+American English.
 
-Rules:
-- Original writing only.
-- No copied scripts.
-- No copyrighted dialogue.
-- Strong opening hook.
-- Clear story structure.
-- Maintain curiosity throughout.
-- Include useful facts and explanations where appropriate.
-- Strong ending.
-- Write narration only.
-- Do not include scene directions.
-- Do not include labels.
+Selected topic:
+{trend_text}
+
+Requirements:
+- strong opening hook
+- documentary/storytelling style
+- original wording
+- detailed story
+- frequent curiosity points
+- strong retention
+- natural transitions
+- satisfying ending
+- approximately 1300-1600 spoken words
+- no copied script
+- no copyrighted clips
+
+Return ONLY the narrator script.
 """
+
 
 script_response = retry_call(
     lambda: client.models.generate_content(
@@ -204,32 +215,35 @@ script = script_response.text.strip()
 if not script:
     raise RuntimeError("Script generate nahi hua.")
 
-with open("story.txt", "w", encoding="utf-8") as file:
-    file.write(script)
+with open("script.txt", "w", encoding="utf-8") as f:
+    f.write(script)
 
-print("Original script generated.")
+print("\nORIGINAL SCRIPT GENERATED.")
 
 
 # ============================================================
-# TITLE / DESCRIPTION
+# TITLE / DESCRIPTION / TAGS
 # ============================================================
 
 metadata_prompt = f"""
-Create YouTube metadata for this ORIGINAL video.
+Create YouTube metadata for this original video.
 
 Channel: {CHANNEL_NAME}
 Audience: USA
+Content type: {content_type}
 
-Script:
+SCRIPT:
 {script}
 
-Return ONLY valid JSON:
+Return exactly:
 
-{{
-  "title": "high CTR but honest title",
-  "description": "YouTube description",
-  "hashtags": ["#shorts", "#mystery", "#story"]
-}}
+TITLE:
+DESCRIPTION:
+TAGS:
+
+Title should be curiosity-driven but NOT misleading.
+Description should be natural.
+Tags should be comma-separated.
 """
 
 metadata_response = retry_call(
@@ -239,33 +253,33 @@ metadata_response = retry_call(
     )
 )
 
-try:
-    metadata = json.loads(metadata_response.text.strip())
-except Exception:
-    metadata = {
-        "title": trend["title"],
-        "description": f"An original story from {CHANNEL_NAME}.",
-        "hashtags": ["#shorts", "#story"]
-    }
+metadata = metadata_response.text.strip()
 
-with open("metadata.json", "w", encoding="utf-8") as file:
-    json.dump(metadata, file, indent=2)
+with open("metadata.txt", "w", encoding="utf-8") as f:
+    f.write(metadata)
+
+print("TITLE + DESCRIPTION + TAGS GENERATED.")
 
 
 # ============================================================
-# AI NARRATION
+# AI VOICE
 # ============================================================
 
 tts_prompt = f"""
-Read the following narration as a professional American YouTube
-storyteller.
+Read the following script as a professional American YouTube narrator.
 
-Natural, engaging, clear voice.
-Good pacing.
-Build suspense where appropriate.
-Do not add words.
+Voice:
+- natural
+- confident
+- cinematic
+- clear
+- engaging
+- appropriate for USA audience
+- no extra words
+- do not change the script
 
-Narration:
+SCRIPT:
+
 {script}
 """
 
@@ -276,68 +290,90 @@ tts_response = retry_call(
         response_format={"type": "audio"},
         generation_config={
             "speech_config": [
-                {"voice": "Kore"}
+                {
+                    "voice": "Kore"
+                }
             ]
         }
     )
 )
 
-audio_data = base64.b64decode(tts_response.output_audio.data)
+audio_data = base64.b64decode(
+    tts_response.output_audio.data
+)
 
-with wave.open("voice.wav", "wb") as wav_file:
-    wav_file.setnchannels(1)
-    wav_file.setsampwidth(2)
-    wav_file.setframerate(24000)
-    wav_file.writeframes(audio_data)
+with wave.open("voice.wav", "wb") as wav:
+    wav.setnchannels(1)
+    wav.setsampwidth(2)
+    wav.setframerate(24000)
+    wav.writeframes(audio_data)
 
-print("AI voice generated.")
+print("AI VOICE GENERATED.")
 
 
 # ============================================================
 # VIDEO CREATION
 # ============================================================
 
-video_title = metadata["title"].replace("'", "")
+# Create a simple cinematic background using FFmpeg.
+# This keeps the system fully automatic and avoids copyrighted footage.
 
-ffmpeg_command = [
-    "ffmpeg",
-    "-y",
-    "-f", "lavfi",
-    "-i", "color=c=black:s=1080x1920:r=30",
-    "-i", "voice.wav",
-    "-t", "30" if content_type.startswith("30") else "600",
-    "-vf",
-    (
-        "drawtext="
-        "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-        f"text='{video_title[:80]}':"
+video_filter = (
+    "color=c=black:s=1080x1920:r=30,"
+    "drawtext=text='VEXORA TALES':"
+    "fontcolor=white:"
+    "fontsize=70:"
+    "x=(w-text_w)/2:"
+    "y=h/2"
+)
+
+if content_type == "30-Second YouTube Short":
+
+    video_command = [
+        "ffmpeg",
+        "-y",
+        "-f", "lavfi",
+        "-i", video_filter,
+        "-i", "voice.wav",
+        "-shortest",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "video.mp4"
+    ]
+
+else:
+
+    video_filter_long = (
+        "color=c=black:s=1920x1080:r=30,"
+        "drawtext=text='VEXORA TALES':"
         "fontcolor=white:"
-        "fontsize=58:"
+        "fontsize=90:"
         "x=(w-text_w)/2:"
-        "y=(h-text_h)/2:"
-        "box=1:"
-        "boxborderw=30:"
-        "boxcolor=black@0.75"
-    ),
-    "-c:v", "libx264",
-    "-preset", "veryfast",
-    "-pix_fmt", "yuv420p",
-    "-c:a", "aac",
-    "-shortest",
-    "vexora_video.mp4"
-]
-
-try:
-    subprocess.run(
-        ffmpeg_command,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        "y=h/2"
     )
-except Exception as error:
-    raise RuntimeError(f"Video creation failed: {error}")
 
-print("Video created.")
+    video_command = [
+        "ffmpeg",
+        "-y",
+        "-f", "lavfi",
+        "-i", video_filter_long,
+        "-i", "voice.wav",
+        "-shortest",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "video.mp4"
+    ]
+
+
+subprocess.run(video_command, check=True)
+
+print("VIDEO CREATED.")
 
 
 # ============================================================
@@ -347,42 +383,63 @@ print("Video created.")
 thumbnail_command = [
     "ffmpeg",
     "-y",
-    "-i", "vexora_video.mp4",
+    "-i", "video.mp4",
     "-frames:v", "1",
     "-vf", "scale=1280:720",
     "thumbnail.jpg"
 ]
 
-subprocess.run(
-    thumbnail_command,
-    check=True,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE
-)
+subprocess.run(thumbnail_command, check=True)
 
-print("Thumbnail created.")
+print("THUMBNAIL CREATED.")
 
 
 # ============================================================
-# SAVE FINAL STATUS
+# YOUTUBE AUTHENTICATION
 # ============================================================
 
-status = {
-    "channel": CHANNEL_NAME,
-    "date": date_name,
-    "content_type": content_type,
-    "topic": trend["topic"],
-    "title": metadata["title"],
-    "video": "vexora_video.mp4",
-    "thumbnail": "thumbnail.jpg",
-    "status": "VIDEO_READY",
-    "upload": "PENDING_YOUTUBE_CONNECTION"
-}
+youtube = None
 
-with open("agent_status.json", "w", encoding="utf-8") as file:
-    json.dump(status, file, indent=2)
+if (
+    YOUTUBE_CLIENT_ID
+    and YOUTUBE_REFRESH_TOKEN
+    and YOUTUBE_CLIENT_SECRET
+):
 
-print("========================================")
-print("PIPELINE STATUS: SUCCESS")
-print("Video + voice + thumbnail ready.")
-print("========================================")
+    credentials = Credentials(
+        token=None,
+        refresh_token=YOUTUBE_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=YOUTUBE_CLIENT_ID,
+        client_secret=YOUTUBE_CLIENT_SECRET,
+        scopes=[
+            "https://www.googleapis.com/auth/youtube.upload",
+            "https://www.googleapis.com/auth/youtube.readonly",
+            "https://www.googleapis.com/auth/yt-analytics.readonly"
+        ]
+    )
+
+    youtube = build(
+        "youtube",
+        "v3",
+        credentials=credentials
+    )
+
+    print("YOUTUBE AUTHENTICATION READY.")
+
+else:
+
+    print(
+        "WARNING: YouTube Client Secret abhi GitHub secret "
+        "mein available nahi hai."
+    )
+
+
+# ============================================================
+# METADATA PARSER
+# ============================================================
+
+title = "Vexora Tales Original Story"
+
+description = (
+    "An original story created by
