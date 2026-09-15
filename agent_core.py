@@ -1,10 +1,8 @@
-# Vexora Tales AI core is intentionally kept in one module.
-# The web app imports these functions to provide a chat-style control layer.
+# Vexora Tales AI core for Sameena AI.
 
 import os
 import base64
 import json
-import re
 import subprocess
 import tempfile
 import wave
@@ -16,6 +14,8 @@ from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+from content_plan import schedule_for_day
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -159,7 +159,8 @@ def trend_research():
                     hours = max((now - published).total_seconds() / 3600, 1)
                 except Exception:
                     hours = 72
-                c["views"] = views; c["views_per_hour"] = round(views / hours, 1)
+                c["views"] = views
+                c["views_per_hour"] = round(views / hours, 1)
         except Exception:
             pass
     candidates.sort(key=lambda x: x.get("views_per_hour", 0), reverse=True)
@@ -170,7 +171,8 @@ def trend_research():
 
 def choose_topic(content_type="short"):
     client = _client()
-    trends = trend_research(); analytics = recent_analytics()
+    trends = trend_research()
+    analytics = recent_analytics()
     prompt = f"""You are the senior strategist for the USA-focused faceless YouTube channel Vexora Tales.
 Today: {datetime.now(TZ).date().isoformat()}
 Content: {content_type}
@@ -179,99 +181,208 @@ Recent channel analytics: {json.dumps(analytics)[:12000]}
 Choose ONE original, realistic, high-interest topic. Never copy a creator or script. Consider topic interest, competition, freshness and retention. Return JSON with topic, angle, hook, reason."""
     r = client.interactions.create(model=TEXT_MODEL, input=prompt)
     text = r.output_text.strip()
-    try: result = json.loads(text)
-    except Exception: result = {"topic": text, "angle": "original", "hook": "", "reason": "AI-selected"}
-    _save_json("last_topic.json", result); return result
+    try:
+        result = json.loads(text)
+    except Exception:
+        result = {"topic": text, "angle": "original", "hook": "", "reason": "AI-selected"}
+    _save_json("last_topic.json", result)
+    return result
 
 
 def _image(prompt, path, aspect_ratio):
     client = _client()
-    interaction = client.interactions.create(model=IMAGE_MODEL, input=prompt, response_format={"type": "image", "aspect_ratio": aspect_ratio, "image_size": "1K"})
-    if not interaction.output_image: raise RuntimeError("Image generation returned no image")
+    interaction = client.interactions.create(
+        model=IMAGE_MODEL,
+        input=prompt,
+        response_format={"type": "image", "aspect_ratio": aspect_ratio, "image_size": "1K"},
+    )
+    if not interaction.output_image:
+        raise RuntimeError("Image generation returned no image")
     path.write_bytes(base64.b64decode(interaction.output_image.data))
 
 
 def _tts(script, path):
     client = _client()
-    interaction = client.interactions.create(model=TTS_MODEL, input=f"Read this script as a natural, confident American YouTube narrator. Do not add words.\n\n{script}", response_format={"type": "audio"}, generation_config={"speech_config": [{"voice": "Kore"}]})
+    interaction = client.interactions.create(
+        model=TTS_MODEL,
+        input=f"Read this script as a natural, confident American YouTube narrator. Do not add words.\n\n{script}",
+        response_format={"type": "audio"},
+        generation_config={"speech_config": [{"voice": "Kore"}]},
+    )
     with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(24000); wf.writeframes(base64.b64decode(interaction.output_audio.data))
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(24000)
+        wf.writeframes(base64.b64decode(interaction.output_audio.data))
 
 
 def _seconds(wav_path):
-    with wave.open(str(wav_path), "rb") as w: return w.getnframes() / float(w.getframerate())
+    with wave.open(str(wav_path), "rb") as w:
+        return w.getnframes() / float(w.getframerate())
 
 
 def _srt(script, duration):
     words = script.split()
-    if not words: return ""
-    size = max(8, len(words) // 5); chunks = [words[i:i + size] for i in range(0, len(words), size)]
-    lines = []; step = duration / len(chunks)
+    if not words:
+        return ""
+    size = max(8, len(words) // max(1, int(duration / 5)))
+    chunks = [words[i:i + size] for i in range(0, len(words), size)]
+    lines = []
+    step = duration / len(chunks)
     for i, chunk in enumerate(chunks):
         a, b = i * step, min(duration, (i + 1) * step)
         def ts(x):
-            ms = int(x * 1000); h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); s, ms = divmod(ms, 1000); return f"{h:02}:{m:02}:{s:02},{ms:03}"
+            ms = int(x * 1000)
+            h, ms = divmod(ms, 3600000)
+            m, ms = divmod(ms, 60000)
+            s, ms = divmod(ms, 1000)
+            return f"{h:02}:{m:02}:{s:02},{ms:03}"
         lines.append(f"{i+1}\n{ts(a)} --> {ts(b)}\n{' '.join(chunk)}\n")
     return "\n".join(lines)
 
 
 def _make_video(images, audio, out, vertical=True):
-    duration = _seconds(audio); per = duration / len(images); clips = []
+    """Assemble images with subtle Ken Burns motion, captions and narration."""
+    duration = _seconds(audio)
+    per = duration / len(images)
+    fps = 30
+    width, height = (1080, 1920) if vertical else (1920, 1080)
+    clips = []
     with tempfile.TemporaryDirectory() as td:
         for i, img in enumerate(images):
             clip = Path(td) / f"clip{i}.mp4"
-            vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920" if vertical else "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080"
-            subprocess.run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", str(per), "-vf", vf, "-r", "30", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-an", str(clip)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            frames = max(1, round(per * fps))
+            # Scale first, then gently zoom toward the center. Alternate direction to avoid a static slideshow feel.
+            zoom_expr = "min(zoom+0.0008,1.12)" if i % 2 == 0 else "max(zoom-0.0008,1.0)"
+            vf = (
+                f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+                f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s={width}x{height}:fps={fps}"
+            )
+            subprocess.run(
+                ["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", str(per), "-vf", vf,
+                 "-r", str(fps), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-an", str(clip)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
             clips.append(clip)
-        concat = Path(td) / "concat.txt"; concat.write_text("\n".join(f"file '{x}'" for x in clips), encoding="utf-8")
+        concat = Path(td) / "concat.txt"
+        concat.write_text("\n".join(f"file '{x}'" for x in clips), encoding="utf-8")
         silent = Path(td) / "silent.mp4"
-        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(silent)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        srt = Path(td) / "captions.srt"; srt.write_text(_srt((DATA / "pending_script.txt").read_text(encoding="utf-8"), duration), encoding="utf-8")
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(silent)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        srt = Path(td) / "captions.srt"
+        srt.write_text(_srt((DATA / "pending_script.txt").read_text(encoding="utf-8"), duration), encoding="utf-8")
         vf2 = f"subtitles={srt}:force_style='FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=80'"
-        subprocess.run(["ffmpeg", "-y", "-i", str(silent), "-i", str(audio), "-vf", vf2, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(silent), "-i", str(audio), "-vf", vf2,
+             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
 
-def generate_video(content_type="short", topic=None):
-    client = _client(); vertical = content_type == "short"
-    if topic is None: topic = choose_topic(content_type)
-    word_target = "65-85" if vertical else "1300-1600"
-    script = client.interactions.create(model=TEXT_MODEL, input=f"Create an original American-English faceless YouTube script for Vexora Tales. Topic: {topic.get('topic')} Angle: {topic.get('angle')} Hook: {topic.get('hook')} Length target: {word_target} spoken words. Use a powerful first 2 seconds, visual storytelling, short sentences, curiosity gaps, a satisfying payoff, and no copyrighted material. Return ONLY the narrator script.").output_text.strip()
+def generate_video(content_type="short", topic=None, target_duration_seconds=None):
+    """Generate content using the requested duration or the current daily schedule."""
+    client = _client()
+    vertical = content_type == "short"
+    if target_duration_seconds is None:
+        plan = schedule_for_day(datetime.now(TZ).date())
+        # Explicit content type wins over the day's type; use a sensible scheduled duration for that type.
+        if content_type == plan["content_type"]:
+            target_duration_seconds = plan["target_duration_seconds"]
+        elif vertical:
+            target_duration_seconds = 60
+        else:
+            target_duration_seconds = 15 * 60
+    target_duration_seconds = int(target_duration_seconds)
+    target_minutes = target_duration_seconds / 60
+    # Natural speech is about 145 words/minute. We use a range rather than forcing an exact runtime.
+    word_target = max(40, round(target_duration_seconds / 60 * 145))
+    if topic is None:
+        topic = choose_topic(content_type)
+    script = client.interactions.create(
+        model=TEXT_MODEL,
+        input=f"""Create an original American-English faceless YouTube script for Vexora Tales.
+Topic: {topic.get('topic')}
+Angle: {topic.get('angle')}
+Hook: {topic.get('hook')}
+Target runtime: about {target_minutes:.1f} minutes ({target_duration_seconds} seconds).
+Target spoken words: about {word_target}.
+Use a powerful first 2 seconds, visual storytelling, short sentences, curiosity gaps, a satisfying payoff, and no copyrighted material. Do not pad or repeat just to reach a duration. Return ONLY the narrator script.""",
+    ).output_text.strip()
     (DATA / "pending_script.txt").write_text(script, encoding="utf-8")
-    metadata_text = client.interactions.create(model=TEXT_MODEL, input=f"Create JSON metadata for this YouTube video. Return title, description, tags. Title must be curiosity-driven but accurate.\n\nSCRIPT:\n{script}").output_text.strip()
-    try: meta = json.loads(metadata_text)
-    except Exception: meta = {"title": "Vexora Tales", "description": script[:1000], "tags": ["Vexora Tales", "mystery", "story"]}
-    if vertical and "#Shorts" not in meta["title"]: meta["title"] += " #Shorts"
-    audio = ASSETS / "voice.wav"; _tts(script, audio); duration = _seconds(audio)
-    scene_count = 4 if vertical else max(8, min(12, round(duration / 50)))
-    scene_text = client.interactions.create(model=TEXT_MODEL, input=f"Break this script into exactly {scene_count} cinematic visual scenes. Return JSON array, each item having scene and visual_prompt. Keep the same visual world and recurring subjects consistent.\n\nSCRIPT:\n{script}").output_text.strip()
-    try: scenes = json.loads(scene_text)
-    except Exception: scenes = [{"scene": i + 1, "visual_prompt": f"Cinematic visual illustrating this story, scene {i+1}. {script[:500]}"} for i in range(scene_count)]
+    metadata_text = client.interactions.create(
+        model=TEXT_MODEL,
+        input=f"Create JSON metadata for this YouTube video. Return title, description, tags. Title must be curiosity-driven but accurate.\n\nSCRIPT:\n{script}",
+    ).output_text.strip()
+    try:
+        meta = json.loads(metadata_text)
+    except Exception:
+        meta = {"title": "Vexora Tales", "description": script[:1000], "tags": ["Vexora Tales", "mystery", "story"]}
+    if vertical and "#Shorts" not in meta["title"]:
+        meta["title"] += " #Shorts"
+    audio = ASSETS / "voice.wav"
+    _tts(script, audio)
+    actual_duration = _seconds(audio)
+    # One scene roughly every 25 seconds; capped to keep generation cost practical.
+    if vertical:
+        scene_count = 4
+    else:
+        scene_count = max(8, min(36, round(actual_duration / 25)))
+    scene_text = client.interactions.create(
+        model=TEXT_MODEL,
+        input=f"Break this script into exactly {scene_count} cinematic visual scenes. Return JSON array, each item having scene and visual_prompt. Keep the same visual world and recurring subjects consistent. Make each scene materially different and useful for visual storytelling.\n\nSCRIPT:\n{script}",
+    ).output_text.strip()
+    try:
+        scenes = json.loads(scene_text)
+    except Exception:
+        scenes = [{"scene": i + 1, "visual_prompt": f"Cinematic visual illustrating this story, scene {i+1}. {script[:500]}"} for i in range(scene_count)]
     images = []
     for i, scene in enumerate(scenes[:scene_count]):
         p = ASSETS / f"scene_{i+1}.png"
         suffix = ". Photorealistic cinematic documentary style, no text, no logos, 9:16 vertical composition." if vertical else ". Photorealistic cinematic documentary style, no text, no logos, 16:9 composition."
-        _image(scene.get("visual_prompt", "") + suffix, p, "9:16" if vertical else "16:9"); images.append(p)
-    out = DATA / "pending_video.mp4"; _make_video(images, audio, out, vertical=vertical)
-    thumb = DATA / "pending_thumbnail.jpg"; _image(f"Create a dramatic YouTube thumbnail for: {meta['title']}. Photorealistic cinematic scene, strong focal subject, high contrast, no words or logos, 16:9.", thumb, "16:9")
-    result = {"video": str(out), "thumbnail": str(thumb), "title": meta["title"], "description": meta.get("description", ""), "tags": meta.get("tags", []), "content_type": content_type, "topic": topic, "created_at": datetime.now(TZ).isoformat(), "approved": False}
-    _save_json("pending.json", result); return result
+        _image(scene.get("visual_prompt", "") + suffix, p, "9:16" if vertical else "16:9")
+        images.append(p)
+    out = DATA / "pending_video.mp4"
+    _make_video(images, audio, out, vertical=vertical)
+    thumb = DATA / "pending_thumbnail.jpg"
+    _image(f"Create a dramatic YouTube thumbnail for: {meta['title']}. Photorealistic cinematic scene, strong focal subject, high contrast, no words or logos, 16:9.", thumb, "16:9")
+    result = {
+        "video": str(out), "thumbnail": str(thumb), "title": meta["title"],
+        "description": meta.get("description", ""), "tags": meta.get("tags", []),
+        "content_type": content_type, "topic": topic, "target_duration_seconds": target_duration_seconds,
+        "actual_voice_duration_seconds": round(actual_duration, 1), "created_at": datetime.now(TZ).isoformat(),
+        "approved": False,
+    }
+    _save_json("pending.json", result)
+    return result
 
 
 def upload_pending(approved=False):
     pending = _load_json("pending.json")
-    if not pending or not Path(pending["video"]).exists(): raise RuntimeError("No pending video. Generate a video first.")
-    if not approved: raise RuntimeError("Upload is locked. Approval is required.")
+    if not pending or not Path(pending["video"]).exists():
+        raise RuntimeError("No pending video. Generate a video first.")
+    if not approved:
+        raise RuntimeError("Upload is locked. Exact approval is required.")
     youtube, _ = youtube_services()
-    if not youtube: raise RuntimeError("YouTube is not connected.")
+    if not youtube:
+        raise RuntimeError("YouTube is not connected.")
     body = {"snippet": {"title": pending["title"], "description": pending["description"], "tags": pending["tags"], "categoryId": "24", "defaultLanguage": "en", "defaultAudioLanguage": "en"}, "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload(pending["video"], mimetype="video/mp4", resumable=True))
     response = None
-    while response is None: _, response = request.next_chunk()
-    video_id = response["id"]; thumb_error = None
-    try: youtube.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(pending["thumbnail"], mimetype="image/jpeg")).execute()
-    except Exception as e: thumb_error = str(e)
+    while response is None:
+        _, response = request.next_chunk()
+    video_id = response["id"]
+    thumb_error = None
+    try:
+        youtube.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(pending["thumbnail"], mimetype="image/jpeg")).execute()
+    except Exception as e:
+        thumb_error = str(e)
     result = {"video_id": video_id, "url": f"https://www.youtube.com/watch?v={video_id}", "title": pending["title"], "uploaded_at": datetime.now(TZ).isoformat(), "thumbnail_error": thumb_error}
-    _save_json("last_upload.json", result); pending["approved"] = True; _save_json("pending.json", pending); return result
+    _save_json("last_upload.json", result)
+    pending["approved"] = True
+    _save_json("pending.json", pending)
+    return result
 
 
 def status_summary():
