@@ -1,0 +1,39 @@
+name: Sameena AI v2 Tests
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "agent_core.py"
+      - "app.py"
+      - "copyright_guard.py"
+      - "content_plan.py"
+      - "requirements.txt"
+      - "tests/**"
+      - ".github/workflows/v2-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Compile Python files
+        run: python -m compileall -q agent_core.py app.py copyright_guard.py content_plan.py
+      - name: Run unit tests
+        run: pytest -q
