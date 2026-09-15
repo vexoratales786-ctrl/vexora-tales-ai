@@ -1,46 +1,18 @@
-name: Vexora Tales AI
+name: Vexora Tales AI (legacy disabled)
 
 on:
-  push:
-    branches: ["main"]
-
   workflow_dispatch:
-
-  schedule:
-    - cron: "30 4 * * *"
 
 permissions:
   contents: read
 
+# Legacy automation is intentionally disabled.
+# Sameena AI v2 must be reviewed and deployed before any publishing automation is restored.
+# This prevents accidental public YouTube uploads from the old main.py flow.
+
 jobs:
-  build:
+  disabled:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install google-genai
-          pip install google-api-python-client
-          pip install google-auth
-          pip install google-auth-oauthlib
-          pip install google-auth-httplib2
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Run Vexora Tales AI
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: |
-          python main.py
+      - name: Safety lock
+        run: echo "Legacy auto-upload workflow is disabled. Sameena AI v2 requires explicit upload approval."
