@@ -1,3 +1,4 @@
+
 import json
 import os
 from datetime import date, timedelta
@@ -137,4 +138,4 @@ if st.session_state.get("show_preview"):
         st.video(pending["video"])
 
 st.divider()
-st.caption("Sameena safety: generated content is not automatically published. Public upload requires explicit approval and an originality safety check. Only original/AI-generated or properly licensed assets should be used.")
+st.caption("Sameena safety: generated content is not automatically published. Public upload requires explicit approval and an originality safety check. Only original/AI-generated or properly licensed assets should be used."
