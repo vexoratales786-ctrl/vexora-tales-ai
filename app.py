@@ -100,6 +100,41 @@ def reply(text: str):
         st.session_state.show_preview = True
         return f"🎬 **Preview ready:** {pending.get('title', 'Pending video')}"
 
+    if cmd.intent == "generate":
+        content_type = cmd.content_type or "short"
+        plan = schedule_for_day(date.today())
+        target = cmd.duration_seconds
+        if target is None and content_type == plan["content_type"]:
+            target = plan["target_duration_seconds"]
+
+        topic = None
+        if cmd.topic:
+            topic = {
+                "topic": cmd.topic,
+                "angle": "User-requested topic",
+                "hook": "",
+                "reason": "User supplied the topic",
+            }
+
+        with st.spinner(
+            f"Sameena {content_type} video bana rahi hai..."
+            " → script → voice → visuals → captions → thumbnail..."
+        ):
+            result = generate_video(
+                content_type,
+                topic=topic,
+                target_duration_seconds=target,
+            )
+        st.session_state.pending = result
+        return (
+            f"✅ **{content_type.title()} video ready hai.**\n\n"
+            f"**Title:** {result['title']}\n\n"
+            f"**Topic:** {result['topic'].get('topic', '')}\n\n"
+            f"**Voice duration:** {result.get('actual_voice_duration_seconds', '—')} sec\n\n"
+            "**Upload abhi nahi hua.** Agar aap bolo **'Upload kar do'**, "
+            "to originality safety check ke baad final approval maanga jayega."
+        )
+
     if "short" in t and ("banao" in t or "make" in t or "create" in t):
         p = schedule_for_day(date.today())
         with st.spinner(f"Sameena Short bana rahi hai: {p['target_duration_label']} → script → voice → visuals → captions → thumbnail..."):
