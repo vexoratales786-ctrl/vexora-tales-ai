@@ -1,0 +1,51 @@
+name: Vexora Tales Daily Content Preparation
+
+on:
+  schedule:
+    # 09:00 Asia/Kolkata = 03:30 UTC
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system video tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare today's content
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TIMEZONE: Asia/Kolkata
+          TEXT_MODEL: gemini-3.1-flash-lite
+          TTS_MODEL: gemini-3.1-flash-tts-preview
+          IMAGE_MODEL: gemini-3.1-flash-image
+        run: python scheduler.py
+
+      - name: Report result
+        if: always()
+        run: |
+          if [ -f data/scheduler_last_run.json ]; then
+            cat data/scheduler_last_run.json
+          else
+            echo "No scheduler result file was created."
+          fi
