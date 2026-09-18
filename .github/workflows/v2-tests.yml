@@ -1,11 +1,23 @@
 name: Sameena AI v2 Tests
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - "agent_core.py"
+      - "app.py"
+      - "command_router.py"
+      - "copyright_guard.py"
+      - "content_plan.py"
+      - "requirements.txt"
+      - "tests/**"
+      - ".github/workflows/v2-tests.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "agent_core.py"
       - "app.py"
+      - "command_router.py"
       - "copyright_guard.py"
       - "content_plan.py"
       - "requirements.txt"
@@ -34,6 +46,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
       - name: Compile Python files
-        run: python -m compileall -q agent_core.py app.py copyright_guard.py content_plan.py
+        run: python -m compileall -q agent_core.py app.py command_router.py copyright_guard.py content_plan.py
       - name: Run unit tests
         run: pytest -q
