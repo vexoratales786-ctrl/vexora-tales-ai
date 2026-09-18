@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from agent_core import choose_topic, generate_video, status_summary, upload_pending
+from command_router import parse_command
 from content_plan import schedule_for_day
 from copyright_guard import check_originality
 
@@ -45,6 +46,27 @@ def _plan_text(days=7):
 
 def reply(text: str):
     t = text.lower().strip()
+    cmd = parse_command(text)
+
+    # Natural Hinglish commands are normalized here; execution keeps the existing safety gates.
+    if cmd.intent == 'plan_30':
+        t = '30 din'
+    elif cmd.intent == 'plan':
+        t = 'aaj ka plan'
+    elif cmd.intent == 'status':
+        t = 'status'
+    elif cmd.intent == 'trend':
+        t = 'trend'
+    elif cmd.intent == 'preview':
+        t = 'preview'
+    elif cmd.intent == 'request_upload':
+        t = 'upload'
+    elif cmd.intent == 'approve_upload':
+        t = 'yes, upload'
+    elif cmd.intent == 'generate' and cmd.content_type == 'short':
+        t = 'short banao'
+    elif cmd.intent == 'generate' and cmd.content_type == 'long':
+        t = 'long banao'
 
     if "30 day" in t or "30-day" in t or "30 din" in t:
         return "**Sameena ka 30-day content plan**\n\n" + _plan_text(30)
