@@ -12,6 +12,7 @@ from content_plan import schedule_for_day
 from copyright_guard import check_originality
 from sameena.agent_planner import plan_message
 from sameena.runtime import SameenaRuntime
+from sameena.browser_connector import browse_url
 
 st.set_page_config(page_title="Sameena AI", page_icon="🎬", layout="centered")
 runtime = SameenaRuntime()
@@ -60,12 +61,23 @@ def reply(text: str):
     # General Sameena routing is now available alongside the legacy YouTube router.
     # Existing YouTube execution remains unchanged; non-YouTube connectors are
     # surfaced as planned capabilities until their backend adapters are attached.
+    if plan.tool == "chat":
+        if t in {"hi", "hii", "hiii", "hello", "hey", "namaste", "salam"}:
+            return "Namaste bhai 👋 Main Sameena hoon. Batao kya kaam karna hai?"
+        return "Haan bhai, main yahin hoon. Batao kya karna hai."
+
     if plan.tool in {"shopify", "canva", "browser"}:
         if plan.tool == "shopify":
             return "🛍️ **Shopify task detected.** Sameena has routed this to the Shopify connector. The connected account can be used once the Sameena runtime adapter is attached."
         if plan.tool == "canva":
             return "🎨 **Canva task detected.** Sameena has routed this to the Canva connector. The connected account can be used once the Sameena runtime adapter is attached."
-        return "🌐 **Browser task detected.** Sameena has routed this to the browser capability. A browser runtime still needs to be attached before it can perform the website action."
+        import re
+        match = re.search(r"https?://[^\s]+|(?:www\.)[^\s]+", text)
+        if not match:
+            return "🌐 **Browser ready hai.** Pehle website ka URL do, jaise: **Open https://example.com**."
+        url = match.group(0).rstrip(".,)")
+        st.session_state.browser_pending_url = url
+        return f"🌐 **Browser task ready:** {url}\n\nCloud browser me open karne ke liye type karo: **YES, BROWSER**."
 
     # Natural Hinglish commands are normalized here; execution keeps the existing safety gates.
     if cmd.intent == 'plan_30':
@@ -167,6 +179,15 @@ def reply(text: str):
             result = generate_video("long")
         st.session_state.pending = result
         return f"✅ Long video ready hai — scheduled target **{p['target_duration_label']}**.\n\n**Title:** {result['title']}\n\n**Upload abhi nahi hua.**"
+
+    if t in {"yes, browser", "yes browser", "haan browser", "haan, browser"}:
+        url = st.session_state.get("browser_pending_url")
+        if not url:
+            return "Koi pending browser task nahi hai."
+        with st.spinner("Sameena cloud browser me website open kar rahi hai..."):
+            result = browse_url(url)
+        st.session_state.browser_pending_url = None
+        return f"🌐 **Browser opened successfully**\n\n**Title:** {result['title']}\n**URL:** {result['url']}\n\n**Page preview:**\n{result['text_preview'][:2500]}"
 
     if t in {"yes, upload", "yes upload", "upload yes", "haan upload", "haan, upload kar do"}:
         pending = st.session_state.get("pending")
