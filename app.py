@@ -10,11 +10,19 @@ from agent_core import choose_topic, generate_video, status_summary, upload_pend
 from command_router import parse_command
 from content_plan import schedule_for_day
 from copyright_guard import check_originality
+from sameena.agent_planner import plan_message
+from sameena.runtime import SameenaRuntime
 
 st.set_page_config(page_title="Sameena AI", page_icon="🎬", layout="centered")
+runtime = SameenaRuntime()
 
 st.title("🎬 Sameena AI")
 st.caption("Vexora Tales — USA-focused faceless YouTube control center")
+with st.sidebar:
+    st.subheader("Sameena connections")
+    for name, connected in runtime.connection_status().items():
+        st.write(("🟢 " if connected else "⚪ ") + name.title())
+    st.caption("Secrets are never displayed in the UI.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -47,6 +55,17 @@ def _plan_text(days=7):
 def reply(text: str):
     t = text.lower().strip()
     cmd = parse_command(text)
+    plan = plan_message(text)
+
+    # General Sameena routing is now available alongside the legacy YouTube router.
+    # Existing YouTube execution remains unchanged; non-YouTube connectors are
+    # surfaced as planned capabilities until their backend adapters are attached.
+    if plan.tool in {"shopify", "canva", "browser"}:
+        if plan.tool == "shopify":
+            return "🛍️ **Shopify task detected.** Sameena has routed this to the Shopify connector. The connected account can be used once the Sameena runtime adapter is attached."
+        if plan.tool == "canva":
+            return "🎨 **Canva task detected.** Sameena has routed this to the Canva connector. The connected account can be used once the Sameena runtime adapter is attached."
+        return "🌐 **Browser task detected.** Sameena has routed this to the browser capability. A browser runtime still needs to be attached before it can perform the website action."
 
     # Natural Hinglish commands are normalized here; execution keeps the existing safety gates.
     if cmd.intent == 'plan_30':
