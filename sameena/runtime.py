@@ -35,7 +35,7 @@ class SameenaRuntime:
             "youtube": bool(os.getenv("YOUTUBE_CLIENT_ID") and os.getenv("YOUTUBE_CLIENT_SECRET")),
             "shopify": bool(os.getenv("SHOPIFY_SHOP_DOMAIN") and os.getenv("SHOPIFY_ACCESS_TOKEN")),
             "meta": bool(os.getenv("META_ACCESS_TOKEN")),
-            "browser": bool(os.getenv("BROWSER_AUTOMATION_API_KEY")),
+            "browser": bool(os.getenv("BROWSERBASE_API_KEY") or os.getenv("BROWSER_AUTOMATION_API_KEY")),
             "ai": bool(os.getenv("GEMINI_API_KEY")),
         }
 
