@@ -11,11 +11,18 @@ from command_router import parse_command
 from content_plan import schedule_for_day
 from copyright_guard import check_originality
 from sameena.agent_planner import plan_message
+from sameena.runtime import SameenaRuntime
 
 st.set_page_config(page_title="Sameena AI", page_icon="🎬", layout="centered")
+runtime = SameenaRuntime()
 
 st.title("🎬 Sameena AI")
 st.caption("Vexora Tales — USA-focused faceless YouTube control center")
+with st.sidebar:
+    st.subheader("Sameena connections")
+    for name, connected in runtime.connection_status().items():
+        st.write(("🟢 " if connected else "⚪ ") + name.title())
+    st.caption("Secrets are never displayed in the UI.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
