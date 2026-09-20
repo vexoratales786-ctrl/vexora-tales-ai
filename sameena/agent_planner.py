@@ -19,6 +19,7 @@ class Plan:
 
 
 _RULES = (
+    ("chat", ("hi", "hii", "hiii", "hello", "hey", "namaste", "salam")),
     ("youtube_upload", ("upload", "publish", "post it to youtube")),
     ("youtube_generate_video", ("make a video", "create a video", "video banao", "short banao")),
     ("youtube_trends", ("trend", "viral", "topic", "what should i make")),
@@ -45,8 +46,8 @@ def plan_message(message: str, registry: ToolRegistry | None = None) -> Plan:
                 )
 
     return Plan(
-        tool="browser",
+        tool="chat",
         intent=text,
-        requires_confirmation=True,
-        reason="No specialized connector matched; route to the general browser capability.",
+        requires_confirmation=False,
+        reason="No specialized action matched; keep the conversation in chat.",
     )
